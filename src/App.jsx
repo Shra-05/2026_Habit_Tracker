@@ -1,9 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Flame, Sparkles } from 'lucide-react';
+import { Plus, Trash2, Flame, Sparkles, LogOut, Users, Lock } from 'lucide-react';
 
 const HabitTracker = () => {
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   
+  const [currentUser, setCurrentUser] = useState(null);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [showLogin, setShowLogin] = useState(true);
+  const [isSignup, setIsSignup] = useState(false);
+  const [error, setError] = useState('');
   const [currentMonth, setCurrentMonth] = useState(0);
   const [habitList, setHabitList] = useState(['Reading', 'Coding']);
   const [newHabit, setNewHabit] = useState('');
@@ -22,12 +28,140 @@ const HabitTracker = () => {
 
   const [currentQuote, setCurrentQuote] = useState(quotes[0]);
 
+  // Load user session on mount
+  useEffect(() => {
+    const savedUser = localStorage.getItem('currentUser');
+    const sessionToken = localStorage.getItem('sessionToken');
+    if (savedUser && sessionToken) {
+      setCurrentUser(savedUser);
+      loadUserData(savedUser);
+      setShowLogin(false);
+    }
+  }, []);
+
+  // Save data whenever it changes
+  useEffect(() => {
+    if (currentUser) {
+      saveUserData();
+    }
+  }, [habitList, checkedDays, currentUser]);
+
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentQuote(quotes[Math.floor(Math.random() * quotes.length)]);
     }, 8000);
     return () => clearInterval(interval);
   }, []);
+
+  const saveUserData = () => {
+    if (!currentUser) return;
+    const userData = {
+      habitList,
+      checkedDays
+    };
+    localStorage.setItem(`habitData_${currentUser}`, JSON.stringify(userData));
+  };
+
+  const loadUserData = (user) => {
+    const savedData = localStorage.getItem(`habitData_${user}`);
+    if (savedData) {
+      const data = JSON.parse(savedData);
+      setHabitList(data.habitList || ['Reading', 'Coding']);
+      setCheckedDays(data.checkedDays || {});
+    } else {
+      setHabitList(['Reading', 'Coding']);
+      setCheckedDays({});
+    }
+  };
+
+  const hashPassword = async (pwd) => {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(pwd);
+    const hash = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(hash))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+  };
+
+  const handleSignup = async () => {
+    setError('');
+    if (!username.trim() || !password.trim()) {
+      setError('Please enter both username and password');
+      return;
+    }
+
+    const trimmedUsername = username.trim().toLowerCase();
+    
+    // Check if account already exists
+    const existingAccounts = JSON.parse(localStorage.getItem('accounts') || '{}');
+    if (existingAccounts[trimmedUsername]) {
+      setError('Account already exists! Please login instead.');
+      return;
+    }
+
+    // Create new account
+    const hashedPassword = await hashPassword(password);
+    existingAccounts[trimmedUsername] = {
+      password: hashedPassword,
+      displayName: username.trim(),
+      createdAt: new Date().toISOString()
+    };
+    
+    localStorage.setItem('accounts', JSON.stringify(existingAccounts));
+    
+    // Auto login after signup
+    const sessionToken = Math.random().toString(36).substring(7);
+    localStorage.setItem('currentUser', trimmedUsername);
+    localStorage.setItem('sessionToken', sessionToken);
+    
+    setCurrentUser(trimmedUsername);
+    loadUserData(trimmedUsername);
+    setShowLogin(false);
+    setUsername('');
+    setPassword('');
+  };
+
+  const handleLogin = async () => {
+    setError('');
+    if (!username.trim() || !password.trim()) {
+      setError('Please enter both username and password');
+      return;
+    }
+
+    const trimmedUsername = username.trim().toLowerCase();
+    const existingAccounts = JSON.parse(localStorage.getItem('accounts') || '{}');
+    
+    if (!existingAccounts[trimmedUsername]) {
+      setError('Account not found! Please sign up first.');
+      return;
+    }
+
+    const hashedPassword = await hashPassword(password);
+    if (existingAccounts[trimmedUsername].password !== hashedPassword) {
+      setError('Incorrect password!');
+      return;
+    }
+
+    // Login successful
+    const sessionToken = Math.random().toString(36).substring(7);
+    localStorage.setItem('currentUser', trimmedUsername);
+    localStorage.setItem('sessionToken', sessionToken);
+    
+    setCurrentUser(trimmedUsername);
+    loadUserData(trimmedUsername);
+    setShowLogin(false);
+    setUsername('');
+    setPassword('');
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('currentUser');
+    localStorage.removeItem('sessionToken');
+    setCurrentUser(null);
+    setShowLogin(true);
+    setHabitList(['Reading', 'Coding']);
+    setCheckedDays({});
+  };
 
   const getDaysInMonth = (month) => {
     return new Date(2026, month + 1, 0).getDate();
@@ -111,6 +245,84 @@ const HabitTracker = () => {
   const daysInMonth = getDaysInMonth(currentMonth);
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
+  const getDisplayName = () => {
+    if (!currentUser) return '';
+    const accounts = JSON.parse(localStorage.getItem('accounts') || '{}');
+    return accounts[currentUser]?.displayName || currentUser;
+  };
+
+  // Login/Signup Screen
+  if (showLogin) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center p-6">
+        <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full">
+          <div className="text-center mb-8">
+            <div className="flex items-center justify-center gap-2 mb-4">
+              <Users className="w-8 h-8 text-gray-700" />
+              <h1 className="text-3xl font-bold text-gray-900">Habit Tracker</h1>
+            </div>
+            <p className="text-gray-600">
+              {isSignup ? 'Create your account to start' : 'Welcome back! Login to continue'}
+            </p>
+          </div>
+          
+          <div className="space-y-4">
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                {error}
+              </div>
+            )}
+            
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Username"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-500"
+            />
+            
+            <div className="relative">
+              <Lock className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && (isSignup ? handleSignup() : handleLogin())}
+                placeholder="Password"
+                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-500"
+              />
+            </div>
+            
+            <button
+              onClick={isSignup ? handleSignup : handleLogin}
+              className="w-full px-4 py-3 bg-gray-900 text-white rounded-lg hover:bg-gray-800 font-medium"
+            >
+              {isSignup ? 'Create Account' : 'Login'}
+            </button>
+
+            <div className="text-center">
+              <button
+                onClick={() => {
+                  setIsSignup(!isSignup);
+                  setError('');
+                  setUsername('');
+                  setPassword('');
+                }}
+                className="text-sm text-gray-600 hover:text-gray-900"
+              >
+                {isSignup ? 'Already have an account? Login' : "Don't have an account? Sign up"}
+              </button>
+            </div>
+          </div>
+
+          <p className="text-xs text-gray-500 mt-6 text-center">
+            Your data is saved securely on your device. Each person needs their own account!
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
@@ -124,10 +336,22 @@ const HabitTracker = () => {
         {/* Header */}
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
-            <h1 className="text-3xl font-bold text-gray-900">2026 Habit Tracker</h1>
-            <div className="flex items-center gap-2 text-sm text-gray-600 bg-white px-4 py-2 rounded-full border border-gray-200">
-              <Sparkles className="w-4 h-4 text-yellow-500" />
-              <span className="italic">{currentQuote}</span>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">2026 Habit Tracker</h1>
+              <p className="text-sm text-gray-600 mt-1">Welcome back, {getDisplayName()}! 👋</p>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="hidden md:flex items-center gap-2 text-sm text-gray-600 bg-white px-4 py-2 rounded-full border border-gray-200">
+                <Sparkles className="w-4 h-4 text-yellow-500" />
+                <span className="italic">{currentQuote}</span>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-2 px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition"
+              >
+                <LogOut className="w-4 h-4" />
+                Logout
+              </button>
             </div>
           </div>
           <div className="flex items-center gap-4">
