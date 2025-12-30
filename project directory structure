@@ -1,0 +1,11 @@
+habit-tracker/
+├── .gitignore
+├── package.json
+├── vite.config.js
+├── tailwind.config.js
+├── postcss.config.js
+├── index.html
+└── src/
+    ├── App.jsx
+    ├── main.jsx
+    └── index.css
